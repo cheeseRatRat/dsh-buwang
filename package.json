@@ -1,0 +1,53 @@
+{
+  "name": "dsh-buwang",
+  "version": "0.1.3",
+  "type": "module",
+  "description": "不忘 — 主动记录的日记与过往，我不会忘记，的私人记忆库",
+  "author": "羡渝渝",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "memory",
+    "memory-library",
+    "diary",
+    "persona",
+    "local-first"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "src",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "homepage": "https://github.com/cheeseRatRat/dsh-buwang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cheeseRatRat/dsh-buwang.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cheeseRatRat/dsh-buwang/issues"
+  }
+}

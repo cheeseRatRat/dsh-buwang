@@ -1,0 +1,9 @@
+{
+  "format": 2,
+  "name": "小满",
+  "budget": "normal",
+  "recentLimit": 40,
+  "consolidateDays": 30,
+  "keepDays": 3,
+  "activePersona": "蓝色小肥鱼"
+}
