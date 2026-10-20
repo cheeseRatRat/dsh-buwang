@@ -1,3 +1,4 @@
+这是 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）的插件，请先装好 DSH 再使用。
 # 不忘
 
 > 主动记录的日记与过往，我不会忘记，的私人记忆库。
