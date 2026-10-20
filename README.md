@@ -1,4 +1,5 @@
-这是 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）的插件，请先装好 DSH 再使用。
+这是 [DeepSeek Harness](https://www.deepseek.com/en/harness/)（DSH）的插件，请先装好 DSH 再使用。
+
 # 不忘
 
 > 主动记录的日记与过往，我不会忘记，的私人记忆库。
@@ -6,6 +7,7 @@
 > `v0.1.3` · MIT · 纯本地 Markdown · 无数据库、无云、无构建步骤
 >
 > 仓库：https://github.com/cheeseRatRat/dsh-buwang · 问题与建议走 [Issues](https://github.com/cheeseRatRat/dsh-buwang/issues)
+
 
 人的记性是有偏向的。当时觉得天大的事，过两个月只剩一句「好像有过这么回事」；而真正要紧的那些，往往连一句都没留下。
 
@@ -40,8 +42,8 @@
 | 层 | 存在哪 | 每轮占多少 | 写法 |
 |---|---|---|---|
 | **同游** | `记忆/<人格>/同游.md` | 全文注入，永不截断 | 一行一条，短句，一直成立 |
-| **近期** | `记忆/<人格>/近期/YYYY-MM-DD.md` | 只挂一行标题 + 一句话 | 一天一文件，当天的事往里追加 |
-| **长期** | `记忆/<人格>/长期/YYYY-MM.md` | 只挂一行标题 + 一句话 | 几天的事整理成一个月的月小记 |
+| **近期** | `记忆/<人格>/近期/YYYY-MM-DD.md` | 只挂最近几天，一天一行 | 一次总结一条；同一天再总结落 `-2`、`-3` |
+| **长期** | `记忆/<人格>/长期/YYYY-MM-DD~YYYY-MM-DD.md` | 只挂一行标题 + 一句话 | 巩固后压成一段日子，细节要翻 |
 
 下面两层平时只露出一行，所以哪怕存了几百天，也压不垮上下文。需要细节时说一声，它就顺着标题去把正文取回来。
 
@@ -80,7 +82,7 @@
 
 ### 前提
 
-- 装好 [DeepSeek Harness](https://github.com/deepseek-ai)（`dsh`），能打开 Web 界面。
+- 先装好 [DeepSeek Harness](https://www.deepseek.com/en/harness/)（`dsh`），能打开 Web 界面。桌面版下载在 [这里](https://www.deepseek.com/en/download/)。
 - 把本仓库放到任意一个固定目录，比如：
 
 ```
@@ -146,10 +148,10 @@ Agent 会用 `plugin_manager` 的 `install_bundle`，把绝对路径当安装目
 设置.json                         { format:2, name, budget, recentLimit, keepDays, activePersona }
 人格/<人格名>.md                  人格本体，只启用一个
 记忆/<人格>/同游.md               同游：每轮全文
-记忆/<人格>/近期/YYYY-MM-DD.md    短期：一天一文件
-记忆/<人格>/长期/YYYY-MM.md       长期：巩固后的月小记
+记忆/<人格>/近期/YYYY-MM-DD.md    短期：一次总结一条（同日 -2、-3）
+记忆/<人格>/长期/YYYY-MM-DD~YYYY-MM-DD.md  长期：巩固后的区间小结
 工坊/<人格>/常驻|按需/*.md        工坊：常驻=启用，按需=关闭
-自述/<人格>/YYYY-MM-DD.md         只给自己看的日记：一天一文件，一小时最多一条
+自述/<人格>/YYYY-MM-DD.md         只给自己看的日记：一次一页，一小时最多一条
 封存/<人格>/*.md                  封存的文档
 封存/<已删人格>/                  删掉的人格整盒（含 人格.md + 记忆/ + 工坊/）
 ```
@@ -204,14 +206,15 @@ Agent 会用 `plugin_manager` 的 `install_bundle`，把绝对路径当安装目
 dsh-buwang/
 ├── package.json           插件清单（dsh.bundle / dsh.client / exports）
 ├── cordis.patch.yml       bundle 补丁：插入 buwang 这一行
-├── index.js               宿主侧：服务、九个 exact 路由、工具注册
-├── client.js              界面侧：侧栏图标、四个标签面板、翻书视图
+├── index.js               宿主侧：服务、十条 exact 路由、工具注册
+├── client.js              界面侧：侧栏图标、四个标签面板、自述就地翻页
 ├── icon.svg               展示图标（市场用，运行时不用）
 ├── locale/{zh,en}.json    标题与描述
 ├── src/host/store.js      全部读写：布局、索引、迁移、封存、指针、保存
 ├── src/host/tools.js      七个工具的描述与执行
 ├── examples/示例库/       一个填满的库，纯示例
 ├── docs/介绍.md           这个项目是什么（长版介绍 + 可直接贴市场的短文案）
+├── docs/功能介绍.md       一页看完：分区、工具、用法
 ├── docs/设计笔记.md       七个设计决定为什么长这样
 ├── README.md
 ├── CHANGELOG.md
