@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+
+# 忘了关的调试痕迹
+_debug.log
+*.log
+
+# 临时脚本与备份
+.tmp/
+.diag/
+*.bak
+*.bak-*
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 不要把真正的记忆库传上来（那是私人的）
+# 库默认在 ~/Documents/buwang；下面是「万一你把库搬进了仓库根目录」的保险，
+# 只拦仓库根上的那几个目录，examples/示例库/ 不受影响。
+/记忆/
+/人格/
+/工坊/
+/封存/
+/自述/
+/设置.json
+/_debug.log
