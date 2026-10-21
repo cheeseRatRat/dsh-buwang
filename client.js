@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
       archive: '长期 · 只剩一句，细节要翻',
       aboutMe: '同游 · 每轮都在',
       tidyTongyou: '整理同游',
-      tidyTip: '同游会越写越长。点一下先看要搬走哪几条，确认后才搬去长期（留最近 20 条）',
+      tidyTip: '同游会越写越长。点一下先看要搬走哪几条，确认后才搬去长期（留最近 30 条）',
       tidyAsk: '将搬走最早 {move} 条（共 {total} 条，留下最近 {keep} 条）。\n原文一字不改，会进长期，需要时照样搜得到。',
       tidyNothing: '同游现在 {n} 条，还没到需要搬的程度。',
       consolidateLabel: '巩固…',
@@ -115,6 +115,13 @@ window.__ModuleLoader__.load({
         recentDaysOptions: [3, 5, 7],
         keepDaysLabel: '巩固留几天',
         keepDaysOptions: [2, 3],
+        curateLabel: '同游精选',
+        curateHint: '让我自己从对话里挑「一直成立」的写进同游：约定、称呼、边界、说话与回应的偏好。发生了什么还是进日记',
+        curateOptions: [
+          { id: 'off', label: '关闭' },
+          { id: 'summary', label: '只在总结时' },
+          { id: 'always', label: '聊到就记' },
+        ],
         dataLabel: '数据位置（记忆库文件夹）',
         dataHint: '记忆库就是一个普通文件夹，你想放哪儿都行；换完重载一次就生效',
         openLabel: '打开文件夹',
@@ -170,7 +177,7 @@ window.__ModuleLoader__.load({
           {
             id: 'today',
             text: '总结今天',
-            desc: '存一条记忆，再写一页自述',
+            desc: '存一条记忆、写一页自述，顺手挑同游',
             draft: '【总结一下今天】整理成一条记忆存进不忘，再写一条自述（这一小时写过就跳过）',
           },
           {
@@ -1183,6 +1190,12 @@ window.__ModuleLoader__.load({
         const recent = (d.memory && d.memory.recent) || [];
         const archive = (d.memory && d.memory.archive) || [];
         const tongyou = d.tongyou || d.about || null;
+        // 同游每轮全文注入，60 行是硬上限；把条数摆在标题上，一眼看得出快满了。
+        const tongyouLines = tongyou
+          ? String(tongyou.body || '')
+              .split(/\r?\n/)
+              .filter((line) => /^\s*-\s+\S/.test(line)).length
+          : 0;
         const self = d.self || [];
         // 巩固要由我来写那段小结，面板里没有输入框——所以这个按钮只做一件事：
         // 把该说的话复制到剪贴板，你粘进输入框就成。
@@ -1237,7 +1250,7 @@ window.__ModuleLoader__.load({
           ]),
           h(Group, {
             key: 'ty',
-            title: DICT.aboutMe,
+            title: DICT.aboutMe + ' · ' + tongyouLines + ' / 60',
             docs: tongyou ? [tongyou] : [],
             onEdit: props.onEdit,
             plain: true,
@@ -1572,6 +1585,30 @@ window.__ModuleLoader__.load({
                 )
               )
             ),
+          ]),
+
+          h('div', { key: 'curate', style: S.field }, [
+            h('span', { key: 'l', style: S.fieldLabel }, st.curateLabel),
+            h(
+              'div',
+              { key: 's', style: S.segmented },
+              st.curateOptions.map((opt) =>
+                h(
+                  'button',
+                  {
+                    key: opt.id,
+                    type: 'button',
+                    style:
+                      (settings.tongyouCurate || 'summary') === opt.id
+                        ? Object.assign({}, S.segment, S.segmentActive)
+                        : S.segment,
+                    onClick: () => persist({ tongyouCurate: opt.id }),
+                  },
+                  opt.label
+                )
+              )
+            ),
+            h('div', { key: 'h', style: S.fieldHint }, st.curateHint),
           ]),
 
           h('div', { key: 'cons', style: S.field }, [
@@ -2087,7 +2124,9 @@ window.__ModuleLoader__.load({
                   const items = body
                     .split(/\r?\n/)
                     .filter((line) => /^\s*-\s+/.test(line) || /^\s*##\s+/.test(line));
-                  const keep = 20;
+                  // 保留条数必须跟后端默认值（archiveTongyou 的 keepCount）和 tidytip
+                  // 上写的数字一致，不然预览算出来要搬走的条数是错的。
+                  const keep = 30;
                   const ask = typeof window !== 'undefined' && typeof window.confirm === 'function';
                   if (items.length <= keep) {
                     if (typeof window !== 'undefined' && typeof window.alert === 'function') {
