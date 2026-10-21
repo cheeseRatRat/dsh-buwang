@@ -1,6 +1,6 @@
 {
   "name": "dsh-buwang",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "engines": {
     "dsh": ">=0.1.7-rc.1"
