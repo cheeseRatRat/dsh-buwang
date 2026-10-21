@@ -228,8 +228,8 @@ export function createTools({ root, refresh }) {
       description:
         "Write one memory into 不忘. Choose the target by the kind of thing it is: kind=tongyou for a standing fact, preference, promise, or the way the user wants to be treated (短句, 一直成立); kind=diary for what happened today (一次总结 = 一条：同一天再总结会另起一个日期条目，不会挤进同一篇); kind=workshop for reusable know-how; kind=self for the persona's OWN diary — written in the active persona's own voice (its tone, its cares), first person, the day as she lived it: what actually happened, who said what, what she felt, what she wanted to say and didn't. Complaints and small warm moments are both allowed; it is a diary, not a report. One page per entry: a day can hold several. Never injected, never recalled — panel only, at most one per hour. " +
         "Wording rule for tongyou: use explicit third-person names — the user's name (设置里那个名字) or 称呼, and the persona's name. Never write 我/你, because the line is read again many turns later with nobody to interpret who 'I' was. " +
-        "Example: user says '蓝色小肥鱼要记住我爱你' → write '小满爱着蓝色小肥鱼' (not '我爱蓝色小肥鱼', not '蓝色小肥鱼要记住我爱她'). Only call this after the user asks to remember something. " +
-        "同游 有上限（25 条）：满了会返回 full 和当前的条目清单，这条不会写进去；先挑几条建议搬去长期（memory_archive kind=tongyou、lines=[…]），等用户点头再写。",
+        "Example: user says '蓝色小肥鱼要记住我爱你' → write '小满爱着蓝色小肥鱼' (not '我爱蓝色小肥鱼', not '蓝色小肥鱼要记住我爱她'). Only call this after the user asks to remember something, or when the index carries the 同游 · 精选 rule and that rule says this is the moment to pick one up. " +
+        "同游 有上限（60 条）：满了会返回 full 和当前的条目清单，这条不会写进去；先挑几条建议搬去长期（memory_archive kind=tongyou、lines=[…]），等用户点头再写。每条尽量短：这里放的是珍贵的、重要的定数，不是流水账。",
       parameters: {
         type: 'object',
         properties: {
