@@ -212,6 +212,18 @@ window.__ModuleLoader__.load({
       },
     };
 
+    // Panel backdrop. Several skins (maid-atelier among them) set
+    // --dsw-alias-bg-base to `transparent` so the wallpaper shows through the
+    // whole GUI; a surface that inherits that token leaves the text sitting bare
+    // on the wallpaper. Base surfaces use the skin's own panel layer plus a
+    // frosted blur instead, so words stay readable over any wallpaper while the
+    // skin keeps its glass look.
+    const SURFACE = {
+      background: 'var(--dsw-alias-bg-layer-1)',
+      backdropFilter: 'blur(16px) saturate(112%)',
+      WebkitBackdropFilter: 'blur(16px) saturate(112%)',
+    };
+
     const S = {
       root: {
         display: 'flex',
@@ -219,7 +231,7 @@ window.__ModuleLoader__.load({
         height: '100%',
         minHeight: 0,
         position: 'relative',
-        background: 'var(--dsw-alias-bg-base)',
+        ...SURFACE,
         color: 'var(--dsw-alias-label-primary)',
         font: 'inherit',
       },
@@ -293,7 +305,7 @@ window.__ModuleLoader__.load({
         padding: '10px 12px',
         borderRadius: '9px',
         border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
       },
       rowHead: { display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 },
       rowTitle: {
@@ -352,7 +364,7 @@ window.__ModuleLoader__.load({
         padding: '16px',
         borderRadius: '10px',
         border: '1px solid var(--dsw-alias-state-error-primary)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
         fontSize: '12px',
         lineHeight: 1.7,
         color: 'var(--dsw-alias-label-secondary)',
@@ -367,7 +379,7 @@ window.__ModuleLoader__.load({
         maxWidth: '86%',
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--dsw-alias-bg-base)',
+        ...SURFACE,
         borderLeft: '1px solid var(--dsw-alias-border-l1)',
         boxShadow: '-8px 0 24px rgba(0,0,0,0.18)',
         zIndex: 2,
@@ -417,7 +429,7 @@ window.__ModuleLoader__.load({
         padding: '7px 10px',
         fontSize: '13px',
         color: 'var(--dsw-alias-label-primary)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
         border: '1px solid var(--dsw-alias-border-l1)',
         borderRadius: '7px',
       },
@@ -430,7 +442,7 @@ window.__ModuleLoader__.load({
         textAlign: 'center',
         borderRadius: '7px',
         border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
         color: 'var(--dsw-alias-label-secondary)',
         cursor: 'pointer',
       },
@@ -446,7 +458,7 @@ window.__ModuleLoader__.load({
         padding: '7px 10px',
         borderRadius: '7px',
         border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
         wordBreak: 'break-all',
       },
       grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' },
@@ -461,7 +473,7 @@ window.__ModuleLoader__.load({
         bottom: 0,
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--dsw-alias-bg-base)',
+        ...SURFACE,
         zIndex: 3,
       },
       editorBody: {
@@ -489,7 +501,7 @@ window.__ModuleLoader__.load({
         fontSize: '13px',
         lineHeight: 1.7,
         color: 'var(--dsw-alias-label-primary)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
         border: '1px solid var(--dsw-alias-border-l1)',
         borderRadius: '7px',
         resize: 'vertical',
@@ -521,7 +533,7 @@ window.__ModuleLoader__.load({
         fontSize: '12px',
         borderRadius: '7px',
         border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-layer-1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
         color: 'var(--dsw-alias-label-secondary)',
         cursor: 'pointer',
       },
@@ -539,7 +551,7 @@ window.__ModuleLoader__.load({
         padding: 0 12px;
         border-radius: 9px;
         border: 1px solid var(--dsw-alias-border-l2);
-        background: var(--dsw-alias-bg-layer-1);
+        background: var(--dsw-alias-bg-layer-2);
         color: var(--dsw-alias-label-primary);
         font: inherit;
         font-size: 13px;
@@ -548,7 +560,7 @@ window.__ModuleLoader__.load({
         transition: background .15s ease, border-color .15s ease, color .15s ease;
       }
       .bw-gear:hover {
-        background: var(--dsw-alias-bg-layer-2);
+        background: var(--dsw-alias-bg-layer-3);
         border-color: var(--dsw-alias-brand-primary);
       }
       .bw-gear:active { transform: translateY(1px); }
@@ -564,7 +576,7 @@ window.__ModuleLoader__.load({
         transition: background .15s ease, border-color .15s ease;
       }
       .bw-ghost:hover {
-        background: var(--dsw-alias-bg-layer-2);
+        background: var(--dsw-alias-bg-layer-3);
         border-color: var(--dsw-alias-border-l2);
       }
       .bw-ghost:active { transform: translateY(1px); }
@@ -582,7 +594,7 @@ window.__ModuleLoader__.load({
       }
       .bw-row-editable:hover {
         border-color: var(--dsw-alias-border-l2) !important;
-        background: var(--dsw-alias-bg-layer-2) !important;
+        background: var(--dsw-alias-bg-layer-3) !important;
       }
       .bw-row-editable:focus-visible {
         outline: 2px solid var(--dsw-alias-brand-primary);
@@ -603,7 +615,7 @@ window.__ModuleLoader__.load({
       .bw-mode:hover {
         color: var(--dsw-alias-label-primary);
         border-color: var(--dsw-alias-border-l2);
-        background: var(--dsw-alias-bg-layer-2);
+        background: var(--dsw-alias-bg-layer-3);
       }
       .bw-mode[data-on="true"] {
         color: var(--dsw-alias-brand-primary);
@@ -654,7 +666,9 @@ window.__ModuleLoader__.load({
         padding: 6px;
         border-radius: 10px;
         border: 1px solid var(--dsw-alias-border-l1);
-        background: var(--dsw-alias-bg-base);
+        background: var(--dsw-alias-bg-layer-1);
+        -webkit-backdrop-filter: blur(16px) saturate(112%);
+        backdrop-filter: blur(16px) saturate(112%);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
         z-index: 30;
       }
@@ -905,7 +919,9 @@ window.__ModuleLoader__.load({
         padding: '6px',
         borderRadius: '12px',
         border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-base)',
+        background: 'var(--dsw-alias-bg-layer-1)',
+        backdropFilter: 'blur(16px) saturate(112%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(112%)',
         boxShadow: '0 10px 28px rgba(0, 0, 0, 0.24)',
         animation: 'bw-menu-in .14s ease',
       };
