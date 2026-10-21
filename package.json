@@ -1,7 +1,10 @@
 {
   "name": "dsh-buwang",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
+  "engines": {
+    "dsh": ">=0.1.7-rc.1"
+  },
   "description": "不忘 — 主动记录的日记与过往，我不会忘记，的私人记忆库",
   "author": "羡渝渝",
   "license": "MIT",
