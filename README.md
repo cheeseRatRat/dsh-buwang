@@ -4,7 +4,7 @@
 
 > 主动记录的日记与过往，我不会忘记，的私人记忆库。
 >
-> `v0.1.3` · MIT · 纯本地 Markdown · 无数据库、无云、无构建步骤
+> `v0.1.4` · MIT · 纯本地 Markdown · 无数据库、无云、无构建步骤
 >
 > 仓库：https://github.com/cheeseRatRat/dsh-buwang · 问题与建议走 [Issues](https://github.com/cheeseRatRat/dsh-buwang/issues)
 
@@ -83,36 +83,26 @@
 ### 前提
 
 - 先装好 [DeepSeek Harness](https://www.deepseek.com/en/harness/)（`dsh`），能打开 Web 界面。桌面版下载在 [这里](https://www.deepseek.com/en/download/)。
-- 把本仓库放到任意一个固定目录，比如：
-
-```
-D:\plugins\dsh-buwang
-```
-
-路径里最好别有空格和奇怪符号。
+- **DSH `0.1.7-rc.1` 或更新**（我们在 `0.2.1-rc.2` 上验证过，门槛压在 `0.1.7-rc.1`，尽量让老一点的版本也能装）。真比这更老的会被 `engines` 在安装时拦下并说明原因。
+- 版本之间接口有变化时，插件**只在自己那一块降级**（缺哪个接口就少哪个功能，写进 `_debug.log`），不会把宿主带崩。
+- 把本仓库放到任意一个固定目录，比如 `D:\plugins\dsh-buwang`。路径里别有空格和奇怪符号。
 
 ### 装进来
 
-最省事：在 DSH 里对 Agent 说一句
+**只走这一条路**：在 DSH 里对 Agent 说一句
 
-> 把这个目录装成插件：`D:\plugins\dsh-buwang`
+> 把这个目录装成插件：`D:\plugins\dsh-buwang`（换成你自己的路径）
 
-Agent 会用 `plugin_manager` 的 `install_bundle`，把绝对路径当安装目标。它会改你 profile 的 `package.json`，所以可能弹一次授权。
+Agent 会用 `plugin_manager` 的 `install_bundle`，把绝对路径当安装目标。它改的是你 profile 的 `package.json`，所以可能弹一次授权。**装完就能用**：侧栏会多一个书页样的图标；没看到就先 `Ctrl+R` 刷一下页面。
 
-手动装也行（三步）：
+> **别手改 profile 的 `package.json`。** 那个文件多一个逗号、少一个括号，整个宿主就起不来，弹窗只说一句 `Unexpected token ',' ... is not valid JSON`——看着像插件崩了，其实是在装配插件树的时候就断了，插件根本还没跑。
+>
+> 真要手动改，只有两处：`dependencies` 里加一行 `"dsh-buwang": "link:<你的绝对路径>"`（**最后一项后面不能有逗号**），以及 `dsh.profile.bundles` 数组里加一项 `"dsh-buwang"`（**不能出现 `,,`**）。改完先校验一遍 JSON 再重启。
 
-1. 在 profile 的 `package.json` 里加依赖：
+### 装不上怎么查
 
-   ```json
-   "dependencies": {
-     "dsh-buwang": "link:D:\\plugins\\dsh-buwang"
-   }
-   ```
-
-2. 在同一个文件的 `dsh.profile.bundles` 数组里加一项 `"dsh-buwang"`——**只加依赖不算加载**，必须进 bundles。
-3. 重启宿主（插件树只在启动时装配；关窗口通常只是缩到托盘）。
-
-装完在侧栏会多一个书页样的图标。没看到就先 `Ctrl+R` 刷一下页面。
+- 看库根目录里有没有 `_debug.log`：有 `apply start, root=…` 就说明宿主已经起来、插件也跑到了，问题在界面；整个文件都没有，说明插件根本没被加载（看路径和清单）。
+- 侧栏没图标但没报错：先 `Ctrl+R`；还不行就关掉整个宿主重开（关窗口常常只是缩到托盘）。
 
 ### 第一次打开
 
