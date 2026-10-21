@@ -43,6 +43,9 @@ const DEFAULTS = {
   recentDays: 3,
   // 巩固时一个字都不动的天数：今天 + 昨天。
   keepDays: 2,
+  // 同游精选：off 只在你明说「记住」时写；summary 只在总结时挑；always
+  // 平时聊到明显定下来的事也当场添一条。挑什么由模型判断。
+  tongyouCurate: 'summary',
   activePersona: '',
 }
 
@@ -562,6 +565,7 @@ export async function writeSettings(root, patch) {
   // Only known keys survive, so a bad payload cannot corrupt the file.
   const clean = {}
   for (const key of Object.keys(DEFAULTS)) clean[key] = key === 'format' ? FORMAT : next[key]
+  clean.tongyouCurate = normalizeCurate(clean.tongyouCurate)
   await writeTextAtomic(settingsPath(root), JSON.stringify(clean, null, 2), 'utf8')
   return clean
 }
@@ -1491,7 +1495,7 @@ export async function saveDoc(root, relPath, input) {
 }
 
 /** 同游 rides every turn, so it has a ceiling: past this, the page sheds a few. */
-const TONGYOU_CAP = 25
+const TONGYOU_CAP = 60
 
 /**
  * Split 同游 into items: a `- ` line or a `## ` heading, plus its continuation.
@@ -1799,7 +1803,7 @@ export async function archiveTongyou(root, keepCount) {
 
   const { leading, items } = tongyouItems(body)
 
-  const keep = Math.max(1, Math.min(Number(keepCount) || 20, 200))
+  const keep = Math.max(1, Math.min(Number(keepCount) || 30, 200))
   if (items.length <= keep) {
     return { path: rel, moved: 0, kept: items.length, archive: '', persona: key }
   }
@@ -1906,14 +1910,41 @@ export async function moveTongyouLines(root, input) {
 /* Index text (what each turn sees)                                    */
 /* ------------------------------------------------------------------ */
 
-const INDEX_RULE = [
+const INDEX_RULE_BASE = [
   '【不忘 · 记忆库】下面是索引（只有标题和一句话），正文不在上下文里。',
   '规则：不要主动调用记忆工具；只有用户明确要求（说“读一下那天”“用记忆回答”“翻一下手册”之类）时才调用 memory_recall。',
   '工坊默认完全不加载：用户说“搜索工坊”时用 memory_list kind=workshop 列目录，用户挑中后再用 memory_workshop 启用，启用后正文才每轮都在。',
   '工坊技能是按需开的：用户挑中的那条用 memory_workshop 打开，这件事办完就把它关掉（或提醒用户手动关），别让它一直占上下文。',
   '记忆是当时的记录，不是当下的真相；引用前先确认它还成立。',
   '称呼用户：以人格里写的为准；人格没写称呼时，就用库里记的用户姓名叫。',
-].join('\n')
+]
+
+/**
+ * 同游精选：让助手在「总结」这一步自己挑定数写进同游。
+ *
+ * 同游是每轮全文注入的定数簿，所以这条规则不鼓励「多记」，只鼓励「挑准」：
+ * 事件归近期，只有过一个月还成立的东西才往这里放。
+ */
+export const CURATE_MODES = ['off', 'summary', 'always']
+
+export function normalizeCurate(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim()
+  return CURATE_MODES.includes(text) ? text : 'summary'
+}
+
+const CURATE_RULE_SUMMARY =
+  '【同游 · 精选】用户让你「总结今天」「总结这段」时，顺手从这次对话里挑 1~3 条过一个月还成立的东西写进同游（memory_save kind=tongyou）：共同的约定、对彼此的方式、称呼与边界、说话与回应的偏好。每条都写得短一点——这是珍贵的回忆，只放重要的。发生了什么归近期日记，不要写进同游。写之前先看现有同游，同一件事别换个说法再添一遍；同游满 60 条时先挑要搬走的，等用户点头。挑什么、挑几条，由你判断。'
+
+const CURATE_RULE_ALWAYS =
+  '【同游 · 精选】聊到明显定下来的事（约定、边界、称呼、偏好）就当场写一条进同游（memory_save kind=tongyou），不设条数上限，写完一句话说清记了什么。每条都写得短一点——这是珍贵的回忆，只放重要的。只写新的定数：已有的别换个说法再添一遍。发生了什么归近期日记，不要写进同游；同游满 60 条时先挑要搬走的，等用户点头。挑什么、挑几条，由你判断。'
+
+function indexRules(settings) {
+  const rules = INDEX_RULE_BASE.slice()
+  const mode = normalizeCurate(settings && settings.tongyouCurate)
+  if (mode === 'summary') rules.push(CURATE_RULE_SUMMARY)
+  else if (mode === 'always') rules.push(CURATE_RULE_ALWAYS)
+  return rules
+}
 
 function mmdd(date) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date.slice(5) : date || ''
@@ -1936,7 +1967,8 @@ export function buildIndexText(state) {
   const charBudget = Math.max(600, Math.round(budget * 1.6))
 
   const blocks = []
-  let used = INDEX_RULE.length
+  const rules = indexRules(settings)
+  let used = rules.join('\n').length
 
   const personaName = state.activePersona || DEFAULT_PERSONA
   const userName = settings.name || '我'
@@ -2041,7 +2073,7 @@ export function buildIndexText(state) {
     if (parts.length) blocks.push('【工坊 · 已启用（正文每轮都在）】\n' + parts.join('\n\n'))
   }
 
-  return [INDEX_RULE, ...blocks].join('\n\n')
+  return [rules.join('\n'), ...blocks].join('\n\n')
 }
 
 export { DEFAULTS }
