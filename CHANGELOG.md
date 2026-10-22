@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.6 · 2026-10-22
+
+**修一个「装上去就没界面」的 bug**
+
+- 发布包里的 `client.js` 注册名写成了本地链接名 `@local/dsh-buwang`，可发布包的包名是 `dsh-buwang`。DSH 按包名启动客户端模块，名字对不上就整块挂不上——界面上是 `Failed to load plugins`，日志里是 `loaded without registering "dsh-buwang"`
+- 现在注册名跟着包名走；`verify-release` 加了两条检查（注册名 == 包名、没有本地链接名残留），以后再忘会当场变红
+- 用 `link:` 装的开发副本不受影响（那份包名本来就是 `@local/dsh-buwang`）
+
 ## 0.1.5 · 2026-10-21
 
 **同游会自己长了**
