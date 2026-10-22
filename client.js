@@ -11,8 +11,12 @@
  *   - every host call goes through `call()`, one place to adapt
  *   - a failed call renders a visible error instead of an empty panel
  */
+// The id must equal this package's name: DSH boots the module under the name in
+// package.json and only mounts a factory whose id matches. The development tree
+// is installed with `link:` under a scoped alias (`@local/` prefix), so the
+// publish copy gets rewritten — see .tmp/fix-publish-id.mjs.
 window.__ModuleLoader__.load({
-  id: '@local/dsh-buwang',
+  id: 'dsh-buwang',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
