@@ -4,6 +4,8 @@
   "budget": "normal",
   "recentLimit": 40,
   "consolidateDays": 30,
+  "recentDays": 3,
   "keepDays": 3,
+  "tongyouCurate": "summary",
   "activePersona": "蓝色小肥鱼"
 }
