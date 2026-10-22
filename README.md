@@ -4,7 +4,7 @@
 
 > 主动记录的日记与过往，我不会忘记，的私人记忆库。
 >
-> `v0.1.4` · MIT · 纯本地 Markdown · 无数据库、无云、无构建步骤
+> `v0.1.6` · MIT · 纯本地 Markdown · 无数据库、无云、无构建步骤
 >
 > 仓库：https://github.com/cheeseRatRat/dsh-buwang · 问题与建议走 [Issues](https://github.com/cheeseRatRat/dsh-buwang/issues)
 
