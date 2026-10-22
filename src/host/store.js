@@ -562,7 +562,11 @@ export async function readSettings(root) {
   }
 }
 
-export async function writeSettings(root, patch) {
+export function writeSettings(root, patch) {
+  return withLibraryLock('settings:' + path.resolve(root), () => writeSettingsLocked(root, patch))
+}
+
+async function writeSettingsLocked(root, patch) {
   const current = await readSettings(root)
   const next = { ...current, ...(patch && typeof patch === 'object' ? patch : {}) }
   // Only known keys survive, so a bad payload cannot corrupt the file.
@@ -1081,11 +1085,86 @@ export async function appendDraft(root, relPath, text) {
  * but the bytes stay on disk. The original path is written into the front
  * matter so `unseal` can put it back exactly where it came from.
  */
+/**
+ * 同一个库里的「读—改—写」排队。
+ *
+ * 面板保存和助手写入可能同时发生；没锁时两边各读到旧内容，后写的把先写的
+ * 整段盖掉（实测 5 条并发写同游只剩 1 条）。队列按库根分组，粒度粗一点，
+ * 但不同库之间不会互相挡。
+ */
+const libraryLocks = new Map()
+
+function withLibraryLock(key, task) {
+  const tail = libraryLocks.get(key) || Promise.resolve()
+  const run = tail.then(
+    () => task(),
+    () => task()
+  )
+  const settled = run.then(
+    () => {},
+    () => {}
+  )
+  libraryLocks.set(key, settled)
+  settled.then(() => {
+    if (libraryLocks.get(key) === settled) libraryLocks.delete(key)
+  })
+  return run
+}
+
+/**
+ * 只接受库内的相对路径。
+ *
+ * `/buwang/seal` 这类面板接口以前把前端给的 path 直接交给搬移函数，传
+ * `../secret.md` 就能把库外的文件搬进来。工具侧本来有校验、接口侧漏了，
+ * 所以护栏放在最靠近文件的这一层：一切搬移都必须先过这里。
+ */
+function assertInsidePath(root, relPath) {
+  const rel = String(relPath || '').replace(/\\/g, '/')
+  if (!rel || rel.includes('..') || rel.startsWith('/') || path.isAbsolute(rel)) {
+    throw new Error('路径不合法')
+  }
+  const rootAbs = path.resolve(root)
+  const abs = path.resolve(rootAbs, rel)
+  if (abs !== rootAbs && !abs.startsWith(rootAbs + path.sep)) throw new Error('路径不合法')
+  return abs
+}
+
+/**
+ * 独占创建：目标名字没被占用才写，绝不覆盖已有文件。
+ *
+ * 先写同目录临时文件，再 hardlink 到目标（目标已存在时 link 会失败），
+ * 内容一次到位、不会留下半个文件；文件系统不支持硬链接时退回 `wx` 写。
+ */
+async function writeTextExclusive(target, text) {
+  const dir = path.dirname(target)
+  await fs.mkdir(dir, { recursive: true })
+  const temp = path.join(
+    dir,
+    '.buwang-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.tmp'
+  )
+  await fs.writeFile(temp, text, 'utf8')
+  try {
+    await fs.link(temp, target)
+    await fs.rm(temp, { force: true })
+    return true
+  } catch (error) {
+    await fs.rm(temp, { force: true }).catch(() => {})
+    if (error && error.code === 'EEXIST') return false
+    try {
+      await fs.writeFile(target, text, { encoding: 'utf8', flag: 'wx' })
+      return true
+    } catch (inner) {
+      if (inner && inner.code === 'EEXIST') return false
+      throw inner
+    }
+  }
+}
+
 export async function moveToSealed(root, relPath) {
   const settings = await readSettings(root)
   const resolved = await resolveActivePersona(root, settings)
   const key = resolved ? resolved.key : DEFAULT_PERSONA
-  const from = path.join(root, relPath)
+  const from = assertInsidePath(root, relPath)
   if (!(await exists(from))) throw new Error('找不到这个文档')
   if (relPath.replace(/\\/g, '/').indexOf('封存/') === 0) throw new Error('已经封存过了')
 
@@ -1301,13 +1380,6 @@ export async function saveDiary(root, doc) {
   // day becomes 2026-10-20-2.md; the date stays the tag, and there is no clock
   // header inside, so each entry reads as one whole day's story on its own.
   const base = recentRel(key) + '/' + date
-  let rel = base + '.md'
-  let seq = 2
-  while (await exists(path.join(root, rel))) {
-    rel = base + '-' + seq + '.md'
-    seq += 1
-  }
-  const abs = path.join(root, rel)
 
   const text =
     frontMatter({
@@ -1327,9 +1399,15 @@ export async function saveDiary(root, doc) {
     body +
     '\n'
 
-  await fs.mkdir(path.dirname(abs), { recursive: true })
-  await writeTextAtomic(abs, text, 'utf8')
-  return { path: rel, appended: false }
+  // 独占创建：两个会话同一天同时总结，不能都算出同一个文件名然后互相覆盖。
+  let rel = base + '.md'
+  let seq = 2
+  for (;;) {
+    const abs = path.join(root, rel)
+    if (await writeTextExclusive(abs, text)) return { path: rel, appended: false }
+    rel = base + '-' + seq + '.md'
+    seq += 1
+  }
 }
 
 /** Create or replace a workshop document; version bumps on update. */
@@ -1532,7 +1610,11 @@ function tongyouItems(body) {
  * tomorrow — a promise, a preference, a rule. Anything that happened today
  * belongs in the diary instead.
  */
-export async function saveTongyou(root, input) {
+export function saveTongyou(root, input) {
+  return withLibraryLock('tongyou:' + path.resolve(root), () => saveTongyouLocked(root, input))
+}
+
+async function saveTongyouLocked(root, input) {
   const key = await activeKey(root)
   await ensureTongyou(root, key)
 
@@ -1795,7 +1877,11 @@ export async function readDoc(root, relPath) {
  * becomes a single index line. Nothing is deleted, and the kept items keep
  * their exact text.
  */
-export async function archiveTongyou(root, keepCount) {
+export function archiveTongyou(root, keepCount) {
+  return withLibraryLock('tongyou:' + path.resolve(root), () => archiveTongyouLocked(root, keepCount))
+}
+
+async function archiveTongyouLocked(root, keepCount) {
   const key = await activeKey(root)
   const rel = tongyouRel(key)
   const abs = path.join(root, rel)
@@ -1853,7 +1939,11 @@ export async function archiveTongyou(root, keepCount) {
  * clock: whoever keeps the page picks the ones that have become history. Text
  * is moved verbatim, and nothing disappears from the library.
  */
-export async function moveTongyouLines(root, input) {
+export function moveTongyouLines(root, input) {
+  return withLibraryLock('tongyou:' + path.resolve(root), () => moveTongyouLinesLocked(root, input))
+}
+
+async function moveTongyouLinesLocked(root, input) {
   const key = await activeKey(root)
   const rel = tongyouRel(key)
   const abs = path.join(root, rel)
