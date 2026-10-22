@@ -553,7 +553,10 @@ export async function readSettings(root) {
   try {
     const raw = await fs.readFile(settingsPath(root), 'utf8')
     const parsed = JSON.parse(raw)
-    return { ...DEFAULTS, ...(parsed && typeof parsed === 'object' ? parsed : {}) }
+    const merged = { ...DEFAULTS, ...(parsed && typeof parsed === 'object' ? parsed : {}) }
+    // 手改过 settings.json 的情况也要兜住：非法值回落到默认档，否则面板三档一个都不亮
+    merged.tongyouCurate = normalizeCurate(merged.tongyouCurate)
+    return merged
   } catch {
     return { ...DEFAULTS }
   }
