@@ -374,7 +374,7 @@ export function createTools({ root, refresh }) {
     {
       name: 'memory_workshop',
       description:
-        'Turn one workshop document on or off. Off (default) means only its name shows in the index; on means its full body is injected every turn. Use it after the user picks a document from the workshop catalog. Only call this when the user asks to enable or disable one.',
+        'Turn one workshop document on or off. Off (default) means it leaves no trace in the context at all — not even its name; on means its full body is injected every turn. Use it after the user picks a document from the workshop catalog. Only call this when the user asks to enable or disable one.',
       parameters: {
         type: 'object',
         properties: {
