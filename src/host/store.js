@@ -686,6 +686,48 @@ async function readDirDocuments(root, relDir) {
 }
 
 /**
+ * Read one side of the workshop (常驻 or 按需), including its one level of
+ * folders. Files directly in the side are 未分类 (`folder: ''`); files one
+ * folder down carry that folder's name.
+ */
+async function readWorkshopSide(root, baseRel) {
+  const abs = path.join(root, baseRel)
+  let entries = []
+  try {
+    entries = await fs.readdir(abs, { withFileTypes: true })
+  } catch {
+    return { docs: [], folders: [] }
+  }
+
+  const docs = []
+  const folders = []
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const folder = normFolder(entry.name)
+      // A folder whose name normalises to nothing cannot be addressed from the
+      // panel or the tools, so its files are read as 未分类 instead of hidden.
+      const subRel = baseRel + '/' + entry.name
+      const inside = await readDirDocuments(root, subRel)
+      for (const doc of inside) docs.push({ ...doc, folder })
+      // 空文件夹也要报出来：刚建好还没放技能的文件夹，得在面板里能看见、
+      // 能往里拖东西，不然建完就「消失」了。
+      if (folder) folders.push(folder)
+      continue
+    }
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue
+    const rel = baseRel + '/' + entry.name
+    try {
+      const text = await fs.readFile(path.join(abs, entry.name), 'utf8')
+      docs.push({ ...parseDocument(rel, text), folder: '' })
+    } catch {
+      // unreadable file: skip rather than break the whole panel
+    }
+  }
+  folders.sort((a, b) => a.localeCompare(b, 'zh'))
+  return { docs, folders }
+}
+
+/**
  * Read one sealed persona box: a folder under 封存 that still holds 人格.md.
  *
  * A deleted persona moves here whole (人格/记忆/工坊), so it is not a document —
@@ -808,16 +850,18 @@ export async function readState(root) {
   const key = resolved ? resolved.key : DEFAULT_PERSONA
   const personas = resolved ? resolved.personas : []
 
-  const [tongyou, recent, archive, always, onDemand, sealed, sealedPersonas, selfNotes] =
+  const [tongyou, recent, archive, sealed, sealedPersonas, selfNotes, alwaysSide, onDemandSide] =
     await Promise.all([
       readDirDocuments(root, memoryRoot(key)),
       readDirDocuments(root, recentRel(key)),
       readDirDocuments(root, longRel(key)),
-      readDirDocuments(root, workshopRel(key, true)),
-      readDirDocuments(root, workshopRel(key, false)),
       readDirDocuments(root, sealedRel(key)),
       readSealedPersonas(root),
       readDirDocuments(root, selfRel(key)),
+      // 工坊 has one level of folders under each side, so it gets its own reader
+      // that also returns the folder names for the panel.
+      readWorkshopSide(root, workshopRel(key, true)),
+      readWorkshopSide(root, workshopRel(key, false)),
     ])
 
   // Shared arcs are read-only windows into another persona's archive. They are
@@ -831,8 +875,8 @@ export async function readState(root) {
       readDirDocuments(root, memoryRoot(other)),
       readDirDocuments(root, recentRel(other)),
       readDirDocuments(root, longRel(other)),
-      readDirDocuments(root, workshopRel(other, true)),
-      readDirDocuments(root, workshopRel(other, false)),
+      readWorkshopSide(root, workshopRel(other, true)),
+      readWorkshopSide(root, workshopRel(other, false)),
     ])
     shared.push({
       key: other,
@@ -840,7 +884,7 @@ export async function readState(root) {
       tongyou: otherTongyou.find((doc) => /^同游\.md$/.test(path.basename(doc.path))) || null,
       recent: otherRecent.sort(byDateDesc),
       archive: otherArchive.sort(byDateDesc),
-      workshop: [].concat(otherAlways, otherOnDemand),
+      workshop: [].concat(otherAlways.docs, otherOnDemand.docs),
     })
   }
 
@@ -857,7 +901,13 @@ export async function readState(root) {
     // Kept as an alias so older call sites keep working while the rename lands.
     about: tongyou.find((doc) => /^同游\.md$/.test(path.basename(doc.path))) || null,
     memory: { recent: recent.sort(byDateDesc), archive: archive.sort(byDateDesc) },
-    workshop: { always, onDemand },
+    workshop: {
+      always: alwaysSide.docs,
+      onDemand: onDemandSide.docs,
+      // Folder names per side, so the panel can show an empty folder and offer
+      // to drop a skill into it.
+      folders: { always: alwaysSide.folders, onDemand: onDemandSide.folders },
+    },
     sealed,
     // Whole personas live in sibling folders under 封存, not inside this
     // persona's own 封存/<key>, so they need their own read path.
@@ -1288,6 +1338,21 @@ export function slugify(title) {
   return (cleaned || '未命名').slice(0, 60)
 }
 
+/**
+ * One workshop folder name, one level deep.
+ *
+ * 分类只是整理：文件夹放在 常驻/ 或 按需/ 下面，启用与否仍然由它所在的那一层
+ * 决定。空串 = 未分类（技能直接躺在 常驻/ 或 按需/ 下）。
+ */
+export function normFolder(name) {
+  const cleaned = String(name || '')
+    .replace(/[\\/:*?"<>|\r\n\t]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned || cleaned === '.' || cleaned === '..' || cleaned === '未分类') return ''
+  return cleaned.slice(0, 40)
+}
+
 async function exists(target) {
   try {
     await fs.access(target)
@@ -1411,18 +1476,44 @@ export async function saveDiary(root, doc) {
 }
 
 /** Create or replace a workshop document; version bumps on update. */
-export async function saveWorkshop(root, doc) {
+export function saveWorkshop(root, doc) {
+  return withLibraryLock('workshop:' + path.resolve(root), () => saveWorkshopLocked(root, doc))
+}
+
+/**
+ * 版本号是「读旧版本 → +1 → 写」，和同游一样是先读后写：五次并发保存都读到
+ * v1，于是五次都写 v2，前四份正文无声消失。锁把「读到写」整段串起来。
+ */
+async function saveWorkshopLocked(root, doc) {
   const settings = await readSettings(root)
   const resolved = await resolveActivePersona(root, settings)
   const key = resolved ? resolved.key : DEFAULT_PERSONA
 
   const always = doc.always === true
-  const rel = workshopRel(key, always) + '/' + slugify(doc.title) + '.md'
+  // 分类只是整理：文件夹挂在 常驻/ 或 按需/ 下面，不改启用规则。
+  const folder = normFolder(doc && doc.folder)
+  const dirRel = workshopRel(key, always) + (folder ? '/' + folder : '')
+  const rel = dirRel + '/' + slugify(doc.title) + '.md'
   const abs = path.join(root, rel)
+
+  // 同名技能只该有一份。写的时候如果这一侧没有、另一侧有（比如用记忆工具
+  // 把一条常驻技能又存了一遍），就当成「连状态一起改」，搬过来而不是留两份
+  // ——两份同名会让人工分不清，memory_workshop 也会变成歧义。
+  let priorRel = rel
+  let priorAbs = abs
+  if (!(await exists(abs))) {
+    const otherSide = workshopRel(key, !always) + (folder ? '/' + folder : '') + '/' + slugify(doc.title) + '.md'
+    const otherAbs = path.join(root, otherSide)
+    if (await exists(otherAbs)) {
+      priorRel = otherSide
+      priorAbs = otherAbs
+    }
+  }
+
   let version = 1
-  if (await exists(abs)) {
-    const prior = await fs.readFile(abs, 'utf8')
-    const parsed = parseDocument(rel, prior)
+  if (await exists(priorAbs)) {
+    const prior = await fs.readFile(priorAbs, 'utf8')
+    const parsed = parseDocument(priorRel, prior)
     version = (parsed.version || 1) + 1
   }
   const text =
@@ -1438,6 +1529,7 @@ export async function saveWorkshop(root, doc) {
     '\n'
   await fs.mkdir(path.dirname(abs), { recursive: true })
   await writeTextAtomic(abs, text, 'utf8')
+  if (priorAbs !== abs) await fs.rm(priorAbs, { force: true })
   return { path: rel, version, replaced: version > 1 }
 }
 
@@ -1451,21 +1543,31 @@ export async function saveWorkshop(root, doc) {
  * New skills land in 按需 (off) unless the user ticks "直接启用", because a
  * workshop body that nobody asked for must never ride along every turn.
  */
-export async function createWorkshopDoc(root, input) {
+export function createWorkshopDoc(root, input) {
+  return withLibraryLock('workshop:' + path.resolve(root), () => createWorkshopDocLocked(root, input))
+}
+
+async function createWorkshopDocLocked(root, input) {
   const title = oneLine(input && input.title ? input.title : '')
   if (!title) throw new Error('标题不能为空')
 
   const settings = await readSettings(root)
   const resolved = await resolveActivePersona(root, settings)
   const key = resolved ? resolved.key : DEFAULT_PERSONA
+  const folder = normFolder(input && input.folder)
   const name = slugify(title) + '.md'
-  for (const dir of [workshopRel(key, false), workshopRel(key, true)]) {
+  // Same title inside the same folder is a clash; the same name in another
+  // folder is a different skill and is allowed.
+  for (const always of [false, true]) {
+    const dir = workshopRel(key, always) + (folder ? '/' + folder : '')
     if (await exists(path.join(root, dir, name))) throw new Error('已经有同名技能：' + title)
   }
 
   const body = String((input && input.body) || '').trim()
-  return saveWorkshop(root, {
+  // 锁不可重入：这里必须调已持锁的版本，不能回头再走 saveWorkshop。
+  return saveWorkshopLocked(root, {
     title,
+    folder,
     summary: oneLine((input && input.summary) || ''),
     // An empty skill still gets a skeleton: the panel is used by people who do
     // not write Markdown from scratch.
@@ -1482,20 +1584,32 @@ export async function createWorkshopDoc(root, input) {
  * moves). 按需 = the name appears in the index and the body waits for a recall.
  * Nothing is deleted: the file keeps its body and only changes folder.
  */
-export async function setWorkshopMode(root, relPath, always) {
+export function setWorkshopMode(root, relPath, always) {
+  return withLibraryLock('workshop:' + path.resolve(root), () =>
+    setWorkshopModeLocked(root, relPath, always)
+  )
+}
+
+async function setWorkshopModeLocked(root, relPath, always) {
   const want = always === true
   const rel = String(relPath || '').replace(/\\/g, '/')
   if (!rel || rel.includes('..') || rel.startsWith('/')) throw new Error('路径不合法')
-  if (!/^工坊\/[^/]+\/(常驻|按需)\//.test(rel)) throw new Error('不是工坊里的文档')
+  // 工坊/<人格>/常驻|按需/[<分类>/]<技能>.md — one level of folders is allowed.
+  if (!/^工坊\/[^/]+\/(常驻|按需)\/(?:[^/]+\/)?[^/]+\.md$/.test(rel)) {
+    throw new Error('不是工坊里的文档')
+  }
 
   const from = path.join(root, rel)
   if (!(await exists(from))) throw new Error('找不到这个文档')
 
   const raw = await fs.readFile(from, 'utf8')
   const next = withAlways(raw, want)
-  const base = path.basename(rel)
-  const dir = path.posix.dirname(rel)
-  const toRel = path.posix.join(path.posix.dirname(dir), want ? '常驻' : '按需', base)
+  // 工坊/<人格>/<side>/[<分类>/]<文件>.md — 切启用状态时把分类一起带过去，
+  // 不然一按启用，技能就掉回「未分类」。
+  const parts = rel.split('/')
+  const file = parts[parts.length - 1]
+  const folder = parts.length === 5 ? parts[3] : ''
+  const toRel = ['工坊', parts[1], want ? '常驻' : '按需', ...(folder ? [folder] : []), file].join('/')
 
   if (toRel === rel) {
     if (next !== raw) await writeTextAtomic(from, next, 'utf8')
@@ -1508,6 +1622,139 @@ export async function setWorkshopMode(root, relPath, always) {
   await writeTextAtomic(to, next, 'utf8')
   await fs.rm(from)
   return { path: toRel, always: want, moved: true }
+}
+
+/**
+ * 建一个工坊文件夹（只有一层，挂在 常驻/ 或 按需/ 下面）。
+ * 已经存在就直接当成功，重复点不会炸。
+ */
+export function createWorkshopFolder(root, name, always) {
+  return withLibraryLock('workshop:' + path.resolve(root), () =>
+    createWorkshopFolderLocked(root, name, always)
+  )
+}
+
+async function createWorkshopFolderLocked(root, name, always) {
+  const folder = normFolder(name)
+  if (!folder) throw new Error('文件夹名不能为空')
+  const key = await activeKey(root)
+  const rel = workshopRel(key, always === true) + '/' + folder
+  await fs.mkdir(path.join(root, rel), { recursive: true })
+  return { folder, always: always === true, path: rel }
+}
+
+/**
+ * 把一条技能挪进其它文件夹（只挪一层，常驻/按需 不变）。
+ * `folder` 传空 = 挪回「未分类」。目标有同名文件就停下来说清楚。
+ */
+export function moveWorkshopDoc(root, relPath, folder) {
+  return withLibraryLock('workshop:' + path.resolve(root), () =>
+    moveWorkshopDocLocked(root, relPath, folder)
+  )
+}
+
+async function moveWorkshopDocLocked(root, relPath, folder) {
+  const rel = String(relPath || '').replace(/\\/g, '/')
+  if (!rel || rel.includes('..') || rel.startsWith('/')) throw new Error('路径不合法')
+  if (!/^工坊\/[^/]+\/(常驻|按需)\/(?:[^/]+\/)?[^/]+\.md$/.test(rel)) {
+    throw new Error('不是工坊里的文档')
+  }
+
+  const from = path.join(root, rel)
+  if (!(await exists(from))) throw new Error('找不到这个文档')
+
+  const wantFolder = normFolder(folder)
+  const parts = rel.split('/')
+  const file = parts[parts.length - 1]
+  const dir = ['工坊', parts[1], parts[2], ...(wantFolder ? [wantFolder] : [])].join('/')
+  const toRel = dir + '/' + file
+  if (toRel === rel) return { path: rel, folder: wantFolder, moved: false }
+
+  const to = path.join(root, toRel)
+  if (await exists(to)) throw new Error('那个文件夹里已经有同名技能：' + file)
+  await fs.mkdir(path.dirname(to), { recursive: true })
+  // 内容和 front matter 一个字不动，只是换个文件夹。
+  await fs.rename(from, to)
+  return { path: toRel, folder: wantFolder, moved: true }
+}
+
+/**
+ * 文件夹改名。只改目录名，里面的技能路径跟着变，内容不碰。
+ */
+export function renameWorkshopFolder(root, from, to, always) {
+  return withLibraryLock('workshop:' + path.resolve(root), () =>
+    renameWorkshopFolderLocked(root, from, to, always)
+  )
+}
+
+async function renameWorkshopFolderLocked(root, from, to, always) {
+  const a = normFolder(from)
+  const b = normFolder(to)
+  if (!a) throw new Error('没有这个文件夹')
+  if (!b) throw new Error('新名字不能为空')
+  if (a === b) return { folder: b, renamed: false }
+
+  const key = await activeKey(root)
+  const baseRel = workshopRel(key, always === true)
+  const fromAbs = path.join(root, baseRel, a)
+  if (!(await exists(fromAbs))) throw new Error('没有这个文件夹：' + a)
+  const toAbs = path.join(root, baseRel, b)
+  if (await exists(toAbs)) throw new Error('已经有同名文件夹：' + b)
+  await fs.rename(fromAbs, toAbs)
+  return { folder: b, renamed: true }
+}
+
+/**
+ * 一键启用 / 关闭整个文件夹。
+ *
+ * 没有「整夹」这种东西：本质就是把这个文件夹里的技能挨个搬去另一边，所以
+ * folder 这个组织方式本身不改变任何启用规则。目标侧同名文件不动（跳过），
+ * 免得覆盖别人已经写好的东西。
+ */
+export function setWorkshopFolderMode(root, folder, always) {
+  return withLibraryLock('workshop:' + path.resolve(root), () =>
+    setWorkshopFolderModeLocked(root, folder, always)
+  )
+}
+
+async function setWorkshopFolderModeLocked(root, folderName, always) {
+  const folder = normFolder(folderName)
+  const want = always === true
+  if (!folder) throw new Error('要先选一个文件夹')
+
+  const key = await activeKey(root)
+  const fromBase = workshopRel(key, !want)
+  const toBase = workshopRel(key, want)
+  const fromDir = path.join(root, fromBase, folder)
+  if (!(await exists(fromDir))) throw new Error('这个文件夹里没有技能：' + folder)
+
+  const entries = await fs.readdir(fromDir, { withFileTypes: true })
+  const files = entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.md'))
+    .map((entry) => entry.name)
+  if (!files.length) throw new Error('这个文件夹里没有技能：' + folder)
+
+  const moved = []
+  const skipped = []
+  for (const name of files) {
+    const fromAbs = path.join(fromDir, name)
+    const to = path.join(root, toBase, folder, name)
+    if (await exists(to)) {
+      skipped.push(name)
+      continue
+    }
+    const raw = await fs.readFile(fromAbs, 'utf8')
+    await fs.mkdir(path.dirname(to), { recursive: true })
+    await writeTextAtomic(to, withAlways(raw, want), 'utf8')
+    await fs.rm(fromAbs)
+    moved.push(name)
+  }
+
+  // 空了就把壳收掉，不留一堆空文件夹。
+  const left = (await fs.readdir(fromDir).catch(() => [])).filter((name) => !name.startsWith('.'))
+  if (!left.length) await fs.rmdir(fromDir).catch(() => {})
+
+  return { folder, always: want, moved: moved.length, skipped }
 }
 
 /** Set the `always` flag inside front matter, creating or extending it. */
@@ -1542,7 +1789,15 @@ const EDITABLE = /^(人格\/|记忆\/|工坊\/|自述\/)/
  * carried over untouched, so editing text never changes what a document means.
  * Workshop documents bump their version, matching `saveWorkshop`.
  */
-export async function saveDoc(root, relPath, input) {
+export function saveDoc(root, relPath, input) {
+  // 面板编辑也是「读旧内容 → 改 → 整篇写」，跟助手保存落同一个文件时要排队；
+  // 工坊文档共用一把库锁，普通文档按文件各排各的。
+  const rel = String(relPath || '').replace(/\\/g, '/')
+  const key = rel.indexOf('工坊/') === 0 ? 'workshop:' : 'doc:'
+  return withLibraryLock(key + path.resolve(root), () => saveDocLocked(root, relPath, input))
+}
+
+async function saveDocLocked(root, relPath, input) {
   const rel = String(relPath || '').replace(/\\/g, '/')
   if (!rel || rel.includes('..') || rel.startsWith('/')) throw new Error('路径不合法')
   if (!EDITABLE.test(rel)) throw new Error('这个位置不支持编辑')
@@ -1675,7 +1930,16 @@ function hasLoosePerson(line) {
  * It never reaches the model — not the index, not recall — so it costs no
  * tokens. It is for the person to read.
  */
-export async function saveSelfNote(root, input) {
+export function saveSelfNote(root, input) {
+  return withLibraryLock('self:' + path.resolve(root), () => saveSelfNoteLocked(root, input))
+}
+
+/**
+ * 「这一小时写过没有」是先读后写：两个调用同时进来都看到目录是空的，于是各自
+ * 写一次，最后只剩一份、而且两边都报成功。整段查—写必须在锁里，写本身再用
+ * 独占创建兜住进程外的同刻写入。
+ */
+async function saveSelfNoteLocked(root, input) {
   const key = await activeKey(root)
   const body = String((input && input.body) || '').trim()
   if (!body) throw new Error('内容不能为空')
@@ -1695,13 +1959,6 @@ export async function saveSelfNote(root, input) {
     if (String(meta.logged || '').slice(0, 2) === hour) {
       return { path: dir + '/' + name, appended: true, skipped: true, reason: '这一小时已经写过一条了' }
     }
-  }
-
-  let rel = dir + '/' + date + '.md'
-  let seq = 2
-  while (await exists(path.join(root, rel))) {
-    rel = dir + '/' + date + '-' + seq + '.md'
-    seq += 1
   }
 
   // The hour goes into the title when there is no title of its own: three pages
@@ -1728,8 +1985,15 @@ export async function saveSelfNote(root, input) {
     body +
     '\n'
 
-  await writeTextAtomic(path.join(root, rel), text, 'utf8')
-  return { path: rel, appended: false, skipped: false }
+  let rel = dir + '/' + date + '.md'
+  let seq = 2
+  for (;;) {
+    if (await writeTextExclusive(path.join(root, rel), text)) {
+      return { path: rel, appended: false, skipped: false }
+    }
+    rel = dir + '/' + date + '-' + seq + '.md'
+    seq += 1
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -2160,7 +2424,8 @@ export function buildIndexText(state) {
     for (const doc of alwaysDocs) {
       const text = String(doc.body || '').trim()
       if (!text || used + text.length > charBudget) continue
-      parts.push('### ' + doc.title + '\n' + text)
+      // 分类写进标题，主人一眼看得出这条是从哪个文件夹启用的。
+      parts.push('### ' + (doc.folder ? doc.folder + ' / ' : '') + doc.title + '\n' + text)
       used += text.length
     }
     if (parts.length) blocks.push('【工坊 · 已启用（正文每轮都在）】\n' + parts.join('\n\n'))
