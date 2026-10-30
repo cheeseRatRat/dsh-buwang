@@ -11,10 +11,6 @@
  *   - every host call goes through `call()`, one place to adapt
  *   - a failed call renders a visible error instead of an empty panel
  */
-// The id must equal this package's name: DSH boots the module under the name in
-// package.json and only mounts a factory whose id matches. The development tree
-// is installed with `link:` under a scoped alias (`@local/` prefix), so the
-// publish copy gets rewritten — see .tmp/fix-publish-id.mjs.
 window.__ModuleLoader__.load({
   id: 'dsh-buwang',
   factory(require) {
@@ -54,6 +50,32 @@ window.__ModuleLoader__.load({
       dormant: '休眠',
       newPersona: '新建人格',
       newWorkshop: '写一个技能',
+      newFolder: '新建文件夹',
+      folderNameHint: '名字随便起，不能带 / 和 \\；新夹子先建在「未启用」那一栏，技能启用后会跟着搬到「启用中」',
+      folderPlaceholder: '比如：前端、部署、写作',
+      folderNameRequired: '先起个名字',
+      folderCreated: '文件夹建好了',
+      folderRename: '改名',
+      folderRenameAsk: '给文件夹「{name}」换个名字',
+      folderRenameHint: '改名后里面的技能跟着搬，正文一个字不动',
+      uncategorized: '未分类',
+      folderMove: '移动',
+      folderPickTitle: '把「{title}」放进哪个文件夹？',
+      folderPickHint: '点一个就直接挪过去；还没有合适的，就在下面新建一个',
+      folderNewInPicker: '＋ 新建一个文件夹',
+      folderCurrent: '现在在这里',
+      folderExpandHint: '点一下展开 / 收起',
+      dialogOk: '确定',
+      dialogCancel: '取消',
+      folderOn: '整夹启用',
+      folderOff: '整夹关闭',
+      folderOnAsk: '把「{name}」里的 {n} 条技能全部启用？正文会每轮都在，一共约 {chars} 字。',
+      folderOffAsk: '把「{name}」里的 {n} 条技能全部收起来？',
+      folderOnTip: '整夹启用：这个文件夹里的技能会全部搬进「启用中」',
+      folderOffTip: '整夹关闭：这个文件夹里的技能会全部搬回「未启用」',
+      folderMoved: '已经挪过去了',
+      folderLabel: '文件夹（可不填）',
+      folderHint: '只是分类，一层就够；留空 = 未分类。跟「启用」无关',
       enableNow: '保存后直接启用（正文每轮都在）',
       enableNowHint: '不勾就先收进「未启用」，只留一个名字；要用的时候再点开',
       activate: '启用',
@@ -368,6 +390,62 @@ window.__ModuleLoader__.load({
         cursor: 'pointer',
       },
       checkLabel: { fontSize: '13px', color: 'var(--dsw-alias-label-primary)' },
+      // Electron 里 window.prompt 根本不实现（点了没反应），所以自建一个
+      // 小对话框来要名字。
+      dialogMask: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0, 0, 0, 0.34)',
+        zIndex: 4,
+      },
+      dialogBox: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        width: '320px',
+        maxWidth: '88%',
+        padding: '18px',
+        borderRadius: '12px',
+        border: '1px solid var(--dsw-alias-border-l1)',
+        ...SURFACE,
+        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.28)',
+      },
+      dialogTitle: { fontSize: '13px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
+      dialogHint: { fontSize: '11px', lineHeight: 1.6, color: 'var(--dsw-alias-label-tertiary)', wordBreak: 'break-word' },
+      dialogFoot: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '2px' },
+      pickList: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        maxHeight: '240px',
+        overflowY: 'auto',
+      },
+      pickItem: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '8px',
+        width: '100%',
+        boxSizing: 'border-box',
+        padding: '7px 10px',
+        fontSize: '12.5px',
+        textAlign: 'left',
+        borderRadius: '7px',
+        border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-primary)',
+        cursor: 'pointer',
+        font: 'inherit',
+      },
+      pickNow: { fontSize: '10px', color: 'var(--dsw-alias-brand-primary)', flex: '0 0 auto' },
+      pickNew: { width: '100%', boxSizing: 'border-box' },
+      folderCaret: { width: '12px', flex: '0 0 auto', color: 'var(--dsw-alias-label-tertiary)' },
       error: {
         display: 'flex',
         flexDirection: 'column',
@@ -758,6 +836,20 @@ window.__ModuleLoader__.load({
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
       }
       .bw-group { animation: bw-fade-in .18s ease; }
+      /* 资源管理器那种文件夹标题：能点、悬停有底 */
+      .bw-folder-head {
+        border-radius: 8px;
+        padding: 4px 6px;
+        margin: 10px -6px 4px;
+        transition: background .15s ease;
+      }
+      .bw-folder-head:hover {
+        background: var(--dsw-alias-bg-layer-2);
+      }
+      .bw-folder-head:focus-visible {
+        outline: 2px solid var(--dsw-alias-brand-primary);
+        outline-offset: -2px;
+      }
       .bw-empty {
         animation: bw-fade-in .2s ease;
       }
@@ -1120,9 +1212,177 @@ window.__ModuleLoader__.load({
       ]);
     }
 
+    /**
+     * 要一个名字的小对话框。
+     *
+     * 不能用 window.prompt：Electron 里它没有实现，点了界面上什么都不会发生
+     * （「新建文件夹 / 移动」点了没反应就是这个原因）。这里自己画一个：输入框、
+     * 确定/取消、回车确认、Esc 取消、点遮罩关掉。
+     */
+    function AskDialog(props) {
+      const spec = props.spec || {};
+      const [text, setText] = useState(spec.initial || '');
+      const [warn, setWarn] = useState('');
+
+      const ok = () => {
+        const value = String(text == null ? '' : text).trim();
+        if (!value && spec.allowEmpty !== true) {
+          setWarn(DICT.folderNameRequired);
+          return;
+        }
+        props.onClose();
+        if (typeof spec.onOk === 'function') spec.onOk(value);
+      };
+
+      return h(
+        'div',
+        {
+          style: S.dialogMask,
+          role: 'dialog',
+          'aria-label': spec.title || '',
+          onMouseDown: (event) => {
+            if (event && event.target === event.currentTarget) props.onClose();
+          },
+        },
+        [
+          h('div', { key: 'box', style: S.dialogBox }, [
+            h('div', { key: 't', style: S.dialogTitle }, spec.title || ''),
+            spec.hint ? h('div', { key: 'h', style: S.dialogHint }, spec.hint) : null,
+            h('input', {
+              key: 'i',
+              className: 'bw-input',
+              style: S.input,
+              value: text,
+              placeholder: spec.placeholder || '',
+              onChange: (e) => {
+                setText(e.target.value);
+                setWarn('');
+              },
+              onKeyDown: (e) => {
+                if (!e) return;
+                if (e.key === 'Enter') ok();
+                if (e.key === 'Escape') props.onClose();
+              },
+            }),
+            warn ? h('div', { key: 'w', style: S.dialogHint }, warn) : null,
+            h('div', { key: 'f', style: S.dialogFoot }, [
+              h(
+                'button',
+                {
+                  key: 'c',
+                  type: 'button',
+                  className: 'bw-ghost',
+                  style: S.ghostBtn,
+                  onClick: () => props.onClose(),
+                },
+                DICT.dialogCancel
+              ),
+              h(
+                'button',
+                {
+                  key: 'o',
+                  type: 'button',
+                  className: 'bw-primary',
+                  style: S.primaryBtn,
+                  onClick: ok,
+                },
+                DICT.dialogOk
+              ),
+            ]),
+          ]),
+        ]
+      );
+    }
+
+    /**
+     * 选一个文件夹的小对话框：点一下就直接挪过去，不用打字。
+     *
+     * 底部留一个「新建一个文件夹」，点它切回要名字的框——建好顺手把这条移进去。
+     */
+    function PickDialog(props) {
+      const spec = props.spec || {};
+      const items = spec.items || [];
+      return h(
+        'div',
+        {
+          style: S.dialogMask,
+          role: 'dialog',
+          'aria-label': spec.title || '',
+          onMouseDown: (event) => {
+            if (event && event.target === event.currentTarget) props.onClose();
+          },
+        },
+        [
+          h('div', { key: 'box', style: S.dialogBox }, [
+            h('div', { key: 't', style: S.dialogTitle }, spec.title || ''),
+            spec.hint ? h('div', { key: 'h', style: S.dialogHint }, spec.hint) : null,
+            h(
+              'div',
+              { key: 'l', style: S.pickList },
+              items.map((item) =>
+                h(
+                  'button',
+                  {
+                    key: 'i:' + item.value,
+                    type: 'button',
+                    style: S.pickItem,
+                    onClick: () => {
+                      props.onClose();
+                      if (typeof spec.onPick === 'function') spec.onPick(item.value);
+                    },
+                  },
+                  [
+                    h('span', { key: 'n' }, item.label),
+                    spec.current === item.value
+                      ? h('span', { key: 'c', style: S.pickNow }, DICT.folderCurrent)
+                      : null,
+                  ]
+                )
+              )
+            ),
+            spec.onCreate
+              ? h(
+                  'button',
+                  {
+                    key: 'new',
+                    type: 'button',
+                    className: 'bw-ghost',
+                    style: { ...S.ghostBtn, width: '100%', boxSizing: 'border-box' },
+                    onClick: () => {
+                      props.onClose();
+                      spec.onCreate();
+                    },
+                  },
+                  DICT.folderNewInPicker
+                )
+              : null,
+            h('div', { key: 'f', style: S.dialogFoot }, [
+              h(
+                'button',
+                {
+                  key: 'c',
+                  type: 'button',
+                  className: 'bw-ghost',
+                  style: S.ghostBtn,
+                  onClick: () => props.onClose(),
+                },
+                DICT.dialogCancel
+              ),
+            ]),
+          ]),
+        ]
+      );
+    }
+
     function TabBody(props) {
       const d = props.data;
       const tab = props.tab;
+      // 工坊里要名字的动作（新建/改名/移动）都走这个对话框，一点就弹。
+      const [ask, setAsk] = useState(null);
+      // 移动时先给一个文件夹清单，点一下就走。
+      const [pick, setPick] = useState(null);
+      // 文件夹展开状态：资源管理器那种，默认收起，只列未分类的内容。
+      const [openFolders, setOpenFolders] = useState({});
 
       if (tab.id === 'persona') {
         const personas = d.personas || [];
@@ -1274,6 +1534,26 @@ window.__ModuleLoader__.load({
       if (tab.id === 'workshop') {
         const always = (d.workshop && d.workshop.always) || [];
         const onDemand = (d.workshop && d.workshop.onDemand) || [];
+        const folderSets = (d.workshop && d.workshop.folders) || {};
+        const alwaysFolders = folderSets.always || [];
+        const onDemandFolders = folderSets.onDemand || [];
+        const allFolders = Array.from(new Set([].concat(alwaysFolders, onDemandFolders)));
+        const call = props.call;
+        const reload = () => {
+          if (typeof props.reload === 'function') props.reload();
+        };
+        const fail = (res) => {
+          if (res && res.error && typeof window !== 'undefined' && window.alert) window.alert(res.error);
+          return res;
+        };
+
+        const openAsk = (spec) => setAsk(spec);
+        const sideTag = (alwaysSide) => (alwaysSide ? 'a' : 'b');
+        const folderOpen = (alwaysSide, name) => openFolders[sideTag(alwaysSide) + ':' + name] === true;
+        const setFolderOpen = (alwaysSide, name, value) =>
+          setOpenFolders((prev) => ({ ...prev, [sideTag(alwaysSide) + ':' + name]: value }));
+        const foldersOf = (alwaysSide) => (alwaysSide ? alwaysFolders : onDemandFolders);
+
         const newBar = h('div', { key: 'bar', style: S.tabBar }, [
           h(
             'button',
@@ -1288,31 +1568,286 @@ window.__ModuleLoader__.load({
             },
             '＋ ' + DICT.newWorkshop
           ),
-        ]);
-        const actionOf = (doc) =>
           h(
             'button',
             {
-              key: 'a',
+              key: 'folder',
               type: 'button',
-              className: 'bw-mode',
-              title: doc.always ? DICT.modeOnTip : DICT.modeOffTip,
-              'data-on': doc.always ? 'true' : 'false',
-              onClick: (event) => {
-                if (event && event.stopPropagation) event.stopPropagation();
-                if (props.toggleMode) props.toggleMode(doc);
+              className: 'bw-ghost',
+              style: S.ghostBtn,
+              title: DICT.newFolder,
+              onClick: () => {
+                openAsk({
+                  title: DICT.newFolder,
+                  hint: DICT.folderNameHint,
+                  initial: '',
+                  placeholder: DICT.folderPlaceholder,
+                  allowEmpty: false,
+                  onOk: (name) => {
+                    call('doc', { action: 'create-folder', name, always: false })
+                      .then(fail)
+                      .then((res) => {
+                        if (res && res.folder) {
+                          // 刚建的文件夹顺手展开，不然建完看不见里面（也看不见它）。
+                          setFolderOpen(false, res.folder, true);
+                          reload();
+                        }
+                      });
+                  },
+                });
               },
             },
-            doc.always ? DICT.alwaysOn : DICT.alwaysOff
-          );
+            '＋ ' + DICT.newFolder
+          ),
+        ]);
+
+        const moveTo = (doc, folder) => {
+          call('doc', { action: 'move', path: doc.path, folder })
+            .then(fail)
+            .then((res) => {
+              if (res && res.path) {
+                // 移过去就把目标文件夹展开，省得主人再点一下找它在哪。
+                if (folder) setFolderOpen(doc.always === true, folder, true);
+                reload();
+              }
+            });
+        };
+
+        const moveDoc = (doc) => {
+          const alwaysSide = doc.always === true;
+          const names = foldersOf(alwaysSide);
+          setPick({
+            title: DICT.folderPickTitle.replace('{title}', doc.title),
+            hint: DICT.folderPickHint,
+            current: doc.folder || '',
+            items: [{ label: DICT.uncategorized, value: '' }].concat(
+              names.map((name) => ({ label: name, value: name }))
+            ),
+            onPick: (folder) => moveTo(doc, folder),
+            onCreate: () => {
+              openAsk({
+                title: DICT.newFolder,
+                hint: DICT.folderNameHint,
+                initial: '',
+                placeholder: DICT.folderPlaceholder,
+                allowEmpty: false,
+                onOk: (name) => {
+                  // 先建夹再挪进来：一次点击做完两件事。
+                  call('doc', { action: 'create-folder', name, always: alwaysSide })
+                    .then(fail)
+                    .then(() => moveTo(doc, name));
+                },
+              });
+            },
+          });
+        };
+
+        const actionOf = (doc) =>
+          h('span', { key: 'a', style: { display: 'inline-flex', gap: '4px', flex: '0 0 auto' } }, [
+            h(
+              'button',
+              {
+                key: 'm',
+                type: 'button',
+                className: 'bw-mode',
+                title: DICT.folderMove,
+                onClick: (event) => {
+                  if (event && event.stopPropagation) event.stopPropagation();
+                  moveDoc(doc);
+                },
+              },
+              DICT.folderMove
+            ),
+            h(
+              'button',
+              {
+                key: 'a',
+                type: 'button',
+                className: 'bw-mode',
+                title: doc.always ? DICT.modeOnTip : DICT.modeOffTip,
+                'data-on': doc.always ? 'true' : 'false',
+                onClick: (event) => {
+                  if (event && event.stopPropagation) event.stopPropagation();
+                  if (props.toggleMode) props.toggleMode(doc);
+                },
+              },
+              doc.always ? DICT.alwaysOn : DICT.alwaysOff
+            ),
+          ]);
+
+        // One group per folder, 未分类 first. 文件夹只是整理，标题里不给它加按钮
+        // 之外的语义；整夹开关也只是把里面的技能挨个搬一次。
+        const sideBlock = (sideTitle, docs, folderNames, alwaysSide) => {
+          const names = folderNames.slice();
+          for (const doc of docs) {
+            const name = doc.folder || '';
+            if (name && names.indexOf(name) < 0) names.push(name);
+          }
+          names.sort((a, b) => String(a).localeCompare(String(b), 'zh'));
+          const loose = docs.filter((doc) => !doc.folder);
+          const blocks = [];
+
+          const renderGroup = (name, inside, alwaysSide) => {
+            const chars = inside.reduce((sum, doc) => sum + String(doc.body || '').length, 0);
+            // 资源管理器那种：未分类直接摊开，文件夹默认收起，点标题展开。
+            const isFolder = !!name;
+            const opened = !isFolder || folderOpen(alwaysSide, name);
+            const toggle = () => {
+              if (isFolder) setFolderOpen(alwaysSide, name, !opened);
+            };
+            const head = h(
+              'div',
+              {
+                key: 't',
+                className: isFolder ? 'bw-folder-head' : undefined,
+                style: { ...S.groupTitle, cursor: isFolder ? 'pointer' : 'default', margin: isFolder ? '10px -6px 4px' : S.groupTitle.margin },
+                title: isFolder ? DICT.folderExpandHint : undefined,
+                onClick: isFolder ? toggle : undefined,
+              },
+              [
+                isFolder
+                  ? h('span', { key: 'k', style: S.folderCaret }, opened ? '▾' : '▸')
+                  : h('span', { key: 'k', style: S.folderCaret }, ''),
+                h('span', { key: 'n' }, name || DICT.uncategorized),
+                h('span', { key: 'c', style: S.count }, String(inside.length)),
+                name
+                  ? h(
+                      'button',
+                      {
+                        key: 'r',
+                        type: 'button',
+                        className: 'bw-mode',
+                        title: DICT.folderRename,
+                        style: { marginLeft: 'auto' },
+                        onClick: (event) => {
+                          if (event && event.stopPropagation) event.stopPropagation();
+                          openAsk({
+                            title: DICT.folderRenameAsk.replace('{name}', name),
+                            hint: DICT.folderRenameHint,
+                            initial: name,
+                            placeholder: DICT.folderPlaceholder,
+                            allowEmpty: false,
+                            onOk: (next) => {
+                              if (!next || next === name) return;
+                              call('doc', {
+                                action: 'rename-folder',
+                                from: name,
+                                to: next,
+                                always: alwaysSide,
+                              })
+                                .then(fail)
+                                .then((res) => {
+                                  if (res && res.folder) {
+                                    setFolderOpen(alwaysSide, next, true);
+                                    reload();
+                                  }
+                                });
+                            },
+                          });
+                        },
+                      },
+                      DICT.folderRename
+                    )
+                  : null,
+                name && inside.length
+                  ? h(
+                      'button',
+                      {
+                        key: 't2',
+                        type: 'button',
+                        className: 'bw-mode',
+                        title: alwaysSide ? DICT.folderOffTip : DICT.folderOnTip,
+                        onClick: (event) => {
+                          if (event && event.stopPropagation) event.stopPropagation();
+                          const ask = alwaysSide
+                            ? DICT.folderOffAsk.replace('{name}', name).replace('{n}', String(inside.length))
+                            : DICT.folderOnAsk
+                                .replace('{name}', name)
+                                .replace('{n}', String(inside.length))
+                                .replace('{chars}', String(chars));
+                          if (typeof window !== 'undefined' && window.confirm && !window.confirm(ask)) return;
+                          call('workshop-mode', { folder: name, always: !alwaysSide })
+                            .then(fail)
+                            .then((res) => {
+                              if (res && (res.moved != null || res.folder)) {
+                                setFolderOpen(!alwaysSide, name, true);
+                                reload();
+                              }
+                            });
+                        },
+                      },
+                      alwaysSide ? DICT.folderOff : DICT.folderOn
+                    )
+                  : null,
+              ]
+            );
+
+            const body =
+              opened && inside.length
+                ? h(
+                    'div',
+                    {
+                      key: 'l',
+                      // 文件夹里的内容缩进一点，像资源管理器那样看得出从属关系
+                      style: isFolder ? { ...S.list, paddingLeft: '18px' } : S.list,
+                    },
+                    inside.map((doc) =>
+                      h(Row, {
+                        key: doc.path,
+                        doc,
+                        action: actionOf(doc),
+                        onEdit: props.onEdit,
+                      })
+                    )
+                  )
+                : null;
+
+            return h('div', { key: 'f:' + (name || '_'), className: 'bw-group' }, [head, body]);
+          };
+
+          if (loose.length) blocks.push(renderGroup('', loose, alwaysSide));
+          for (const name of names) {
+            const inside = docs.filter((doc) => doc.folder === name);
+            blocks.push(renderGroup(name, inside, alwaysSide));
+          }
+          if (!blocks.length) return null;
+          return h('div', { key: 'side:' + sideTitle }, blocks);
+        };
+
         return h('div', {}, [
           newBar,
-          always.length + onDemand.length === 0
+          always.length + onDemand.length + allFolders.length === 0
             ? h(Empty, { key: 'e', text: DICT.emptyWorkshop, hint: DICT.emptyWorkshopHint })
             : h('div', { key: 'g' }, [
-                h(Group, { key: 'w1', title: DICT.alwaysOn, docs: always, actionOf, onEdit: props.onEdit }),
-                h(Group, { key: 'w2', title: DICT.alwaysOff, docs: onDemand, actionOf, onEdit: props.onEdit }),
+                h('div', { key: 'w1' }, [
+                  h('div', { key: 't', style: S.groupTitle }, [
+                    h('span', { key: 'n' }, DICT.alwaysOn),
+                    h('span', { key: 'c', style: S.count }, String(always.length)),
+                  ]),
+                  sideBlock(DICT.alwaysOn, always, alwaysFolders, true),
+                ]),
+                h('div', { key: 'w2' }, [
+                  h('div', { key: 't', style: S.groupTitle }, [
+                    h('span', { key: 'n' }, DICT.alwaysOff),
+                    h('span', { key: 'c', style: S.count }, String(onDemand.length)),
+                  ]),
+                  sideBlock(DICT.alwaysOff, onDemand, onDemandFolders, false),
+                ]),
               ]),
+          ask
+            ? h(AskDialog, {
+                key: 'ask',
+                spec: ask,
+                onClose: () => setAsk(null),
+              })
+            : null,
+          pick
+            ? h(PickDialog, {
+                key: 'pick',
+                spec: pick,
+                onClose: () => setPick(null),
+              })
+            : null,
         ]);
       }
 
@@ -1804,6 +2339,7 @@ window.__ModuleLoader__.load({
       const [summary, setSummary] = useState(doc.summary || '');
       const [body, setBody] = useState(doc.body || '');
       const [always, setAlways] = useState(false);
+      const [folder, setFolder] = useState(doc.folder || '');
       const [status, setStatus] = useState('');
       const [busy, setBusy] = useState(false);
 
@@ -1836,7 +2372,10 @@ window.__ModuleLoader__.load({
         setStatus('');
         const payload = { path: doc.path, title, body };
         if (!hideSummary) payload.summary = summary;
-        if (isWorkshopCreate) payload.always = always;
+        if (isWorkshopCreate) {
+          payload.always = always;
+          payload.folder = folder;
+        }
         props
           .onSave(payload)
           .then((res) => {
@@ -1942,6 +2481,22 @@ window.__ModuleLoader__.load({
                 }),
                 h('span', { key: 'l', style: S.checkLabel }, DICT.enableNow),
                 h('span', { key: 'h', style: S.fieldHint }, DICT.enableNowHint),
+              ])
+            : null,
+
+          isWorkshopCreate
+            ? h('div', { key: 'folder', style: S.field }, [
+                h('label', { key: 'l', style: S.fieldLabel, htmlFor: 'buwang-doc-folder' }, DICT.folderLabel),
+                h('input', {
+                  key: 'i',
+                  id: 'buwang-doc-folder',
+                  className: 'bw-input',
+                  style: S.input,
+                  value: folder,
+                  placeholder: DICT.uncategorized,
+                  onChange: (e) => setFolder(e.target.value),
+                }),
+                h('div', { key: 'h', style: S.fieldHint }, DICT.folderHint),
               ])
             : null,
 
@@ -2110,10 +2665,18 @@ window.__ModuleLoader__.load({
                 key: 'tab',
                 tab,
                 data,
+                // 工坊文件夹的几个动作都在 TabBody 里点、TabBody 里发，
+                // 所以把通道和重载直接递进去。
+                call: props.call,
+                reload: load,
                 toggleMode: (doc) => {
                   props
                     .call('workshop-mode', { path: doc.path, always: !doc.always })
                     .then((res) => {
+                      // 对面有同名文件之类的失败要让人看见，不能点了没反应。
+                      if (res && res.error && typeof window !== 'undefined' && window.alert) {
+                        window.alert(res.error);
+                      }
                       if (res && res.path) load();
                       return res;
                     });
@@ -2242,6 +2805,7 @@ window.__ModuleLoader__.load({
                     summary: payload.summary,
                     body: payload.body,
                     always: payload.always === true,
+                    folder: payload.folder || '',
                   })
                   .then((res) => {
                     if (res && res.path) {
