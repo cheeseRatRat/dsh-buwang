@@ -13,6 +13,8 @@ import {
   saveTongyou,
   saveSelfNote,
   setWorkshopMode,
+  setWorkshopFolderMode,
+  normFolder,
   moveToSealed,
   consolidatePlan,
   archiveEntries,
@@ -31,6 +33,7 @@ function describe(doc) {
   return (
     '- ' +
     (doc.date ? doc.date + ' ' : '') +
+    (doc.folder ? '[' + doc.folder + '] ' : '') +
     doc.title +
     (doc.summary ? ' — ' + doc.summary : '') +
     '  [' +
@@ -89,12 +92,17 @@ export function createTools({ root, refresh }) {
     {
       name: 'memory_list',
       description:
-        'List entries in the 不忘 memory library as one line each (title, date, summary, path). Never returns bodies. Use when the user asks what memories exist.',
+        'List entries in the 不忘 memory library as one line each (title, date, summary, path). Never returns bodies. Use when the user asks what memories exist. 工坊 entries carry their folder, and passing folder lists only that folder.',
       parameters: {
         type: 'object',
         properties: {
           kind: KIND,
           limit: { type: 'integer', description: 'Maximum entries to return. Defaults to 40.' },
+          folder: {
+            type: 'string',
+            description:
+              "工坊分类：只列这个文件夹里的技能。传「未分类」看没有分类的那些。给了它就不再列其它种类。",
+          },
         },
         additionalProperties: false,
       },
@@ -113,13 +121,34 @@ export function createTools({ root, refresh }) {
       async execute(args) {
         const kind = (args && args.kind) || 'all'
         const limit = Math.min(Math.max(Number((args && args.limit) || 40), 1), 200)
+        const folderArg = typeof (args && args.folder) === 'string' ? args.folder.trim() : null
         const state = await readState(root)
+        const workshop = [].concat(state.workshop.always, state.workshop.onDemand)
+
+        // 指定了分类就只在这个文件夹里找：工坊的东西本来就该按夹子翻，
+        // 日记和人格不该跟着一起出来。
+        if (folderArg !== null) {
+          const wanted = folderArg === '未分类' ? '' : normFolder(folderArg)
+          const entries = workshop
+            .filter((doc) => (doc.folder || '') === wanted)
+            .slice(0, limit)
+            .map((doc) => ({
+              path: doc.path,
+              title: doc.title,
+              date: doc.date,
+              summary: doc.summary,
+              tags: doc.tags,
+              folder: doc.folder || '',
+            }))
+          return { entries, count: entries.length, folder: wanted }
+        }
+
         const buckets = []
         if (kind === 'all' || kind === 'diary') {
           buckets.push(...state.memory.recent, ...state.memory.archive)
         }
         if (kind === 'all' || kind === 'workshop') {
-          buckets.push(...state.workshop.always, ...state.workshop.onDemand)
+          buckets.push(...workshop)
         }
         if (kind === 'all' || kind === 'persona') {
           if (state.persona) buckets.push(state.persona)
@@ -133,6 +162,7 @@ export function createTools({ root, refresh }) {
           date: doc.date,
           summary: doc.summary,
           tags: doc.tags,
+          folder: doc.folder || '',
         }))
         return { entries, count: entries.length }
       },
@@ -249,6 +279,11 @@ export function createTools({ root, refresh }) {
           tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags.' },
           date: { type: 'string', description: 'Diary only: YYYY-MM-DD. Defaults to today.' },
           always: { type: 'boolean', description: 'Workshop only: inject the full body every turn.' },
+          folder: {
+            type: 'string',
+            description:
+              'Workshop only: 分类文件夹（一层）。不传 = 未分类。文件夹只是整理，不影响是否每轮注入——那是 always 管的事。',
+          },
           scope: { type: 'string', description: 'Where this happened, such as a workspace path.' },
         },
         required: ['kind', 'body'],
@@ -324,6 +359,7 @@ export function createTools({ root, refresh }) {
             summary: args.summary,
             tags: args.tags,
             always: args.always === true,
+            folder: args.folder,
           })
         } else {
           if (!title) throw new Error('diary 需要 title')
@@ -374,41 +410,94 @@ export function createTools({ root, refresh }) {
     {
       name: 'memory_workshop',
       description:
-        'Turn one workshop document on or off. Off (default) means it leaves no trace in the context at all — not even its name; on means its full body is injected every turn. Use it after the user picks a document from the workshop catalog. Only call this when the user asks to enable or disable one.',
+        'Turn one workshop document on or off. Off (default) means it leaves no trace in the context at all — not even its name; on means its full body is injected every turn. Use it after the user picks a document from the workshop catalog. Only call this when the user asks to enable or disable one. 传入 folder 且不传 title 时，整条文件夹一起开或关；传入 folder 和 title 时只在这个文件夹里找那一条。',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Title (or path) of the workshop document.' },
+          title: {
+            type: 'string',
+            description: 'Title (or path) of the workshop document. 和 folder 一起用时按文件夹收窄。',
+          },
+          folder: {
+            type: 'string',
+            description: '工坊分类文件夹名。单独给（不给 title）= 整夹开关；和 title 一起给 = 只在这个文件夹里找。',
+          },
           enabled: { type: 'boolean', description: 'true = 启用 (inject every turn), false = 关闭.' },
         },
-        required: ['title', 'enabled'],
+        required: ['enabled'],
         additionalProperties: false,
       },
       output: {
         schema: {
           type: 'object',
-          properties: { path: { type: 'string' }, always: { type: 'boolean' } },
+          properties: {
+            path: { type: 'string' },
+            always: { type: 'boolean' },
+            folder: { type: 'string' },
+          },
           required: ['path'],
         },
         render(args, value) {
           if (!value || !value.path) return asText('没有找到这篇。')
+          if (value.folder && !value.title) {
+            return asText(
+              '已' + (value.always ? '启用' : '关闭') + '整个文件夹「' + value.folder + '」：' +
+                (value.moved || 0) + ' 条' +
+                (value.skipped && value.skipped.length
+                  ? '；对面已有同名的 ' + value.skipped.length + ' 条没动：' + value.skipped.join('、')
+                  : '')
+            )
+          }
           return asText((value.always ? '已启用：' : '已关闭：') + value.path)
         },
       },
       async execute(args) {
         const wanted = String((args && args.title) || '').trim()
+        const folderRaw = typeof (args && args.folder) === 'string' ? args.folder.trim() : ''
+        const hasFolder = folderRaw !== ''
         const enabled = !!(args && args.enabled)
-        if (!wanted) throw new Error('要指定一篇')
+        if (!wanted && !hasFolder) throw new Error('要指定一篇，或者一个文件夹')
+
+        // 整夹开关：不给 title 就关/开整个文件夹。
+        if (!wanted) {
+          const result = await setWorkshopFolderMode(root, folderRaw, enabled)
+          if (typeof refresh === 'function') refresh()
+          return { ...result, path: '工坊/' + (result.folder || folderRaw) }
+        }
 
         const state = await readState(root)
-        const pool = [].concat(state.workshop.always, state.workshop.onDemand)
-        const found =
-          pool.find((doc) => doc.path === wanted) ||
-          pool.find((doc) => doc.title === wanted) ||
-          pool.find((doc) => doc.title.indexOf(wanted) >= 0)
-        if (!found) throw new Error('工坊里没有这篇：' + wanted)
+        let pool = [].concat(state.workshop.always, state.workshop.onDemand)
+        if (hasFolder) {
+          const want = normFolder(folderRaw)
+          pool = pool.filter((doc) => (doc.folder || '') === want)
+        }
 
-        const result = await setWorkshopMode(root, found.path, enabled)
+        const found = pool.find((doc) => doc.path === wanted)
+        let doc = found
+        if (!doc) {
+          // 分类之后同名技能可以并存（不同文件夹各一份），所以「标题对上了」
+          // 不等于「就是这一条」：好过瞎挑一个，先说清楚有哪些。
+          const exact = pool.filter((item) => item.title === wanted)
+          if (exact.length === 1) doc = exact[0]
+          else if (exact.length > 1) {
+            throw new Error(
+              '工坊里同名技能有 ' + exact.length + ' 条，说清楚要哪一条（或给个文件夹）：' +
+                exact.map((item) => item.path).join('、')
+            )
+          } else {
+            const partial = pool.filter((item) => item.title.indexOf(wanted) >= 0)
+            if (partial.length > 1) {
+              throw new Error(
+                '工坊里有好几条对上「' + wanted + '」，说清楚是哪一条（或给个文件夹）：' +
+                  partial.map((item) => item.path).join('、')
+              )
+            }
+            doc = partial[0]
+          }
+        }
+        if (!doc) throw new Error('工坊里没有这篇：' + wanted)
+
+        const result = await setWorkshopMode(root, doc.path, enabled)
         if (typeof refresh === 'function') refresh()
         return result
       },
