@@ -25,6 +25,10 @@ import {
   setDataRoot,
   resetRootPointer,
   setWorkshopMode,
+  setWorkshopFolderMode,
+  createWorkshopFolder,
+  moveWorkshopDoc,
+  renameWorkshopFolder,
   saveDoc,
   createWorkshopDoc,
   setActivePersona,
@@ -143,8 +147,15 @@ export function apply(ctx, config) {
     },
 
     async workshopMode(payload) {
-      const relPath = payload && typeof payload.path === 'string' ? payload.path : ''
-      const always = payload ? payload.always === true : false
+      const body = payload && typeof payload === 'object' ? payload : {}
+      // 面板上的「整夹启用」：没有 path，只有一个文件夹名。
+      if (!body.path && typeof body.folder === 'string' && body.folder !== '') {
+        const result = await setWorkshopFolderMode(root, body.folder, body.always === true)
+        refresh()
+        return result
+      }
+      const relPath = typeof body.path === 'string' ? body.path : ''
+      const always = body.always === true
       const result = await setWorkshopMode(root, relPath, always)
       refresh()
       return result
@@ -158,6 +169,21 @@ export function apply(ctx, config) {
         const created = await createWorkshopDoc(root, body)
         refresh()
         return created
+      }
+      if (body.action === 'create-folder') {
+        const created = await createWorkshopFolder(root, body.name, body.always === true)
+        refresh()
+        return created
+      }
+      if (body.action === 'rename-folder') {
+        const renamed = await renameWorkshopFolder(root, body.from, body.to, body.always === true)
+        refresh()
+        return renamed
+      }
+      if (body.action === 'move') {
+        const moved = await moveWorkshopDoc(root, body.path, body.folder)
+        refresh()
+        return moved
       }
       const result = await saveDoc(root, body.path, body)
       refresh()
